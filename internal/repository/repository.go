@@ -59,9 +59,15 @@ func (r *Repository) TransactContext(ctx context.Context, change func(*domain.St
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	current := r.store.State()
 	next := current.Clone()
 	if err := change(&next); err != nil {
+		return err
+	}
+	if err := ctx.Err(); err != nil {
 		return err
 	}
 	if reflect.DeepEqual(current, next) {
