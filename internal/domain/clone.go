@@ -1,5 +1,7 @@
 package domain
 
+import "time"
+
 func (s State) Clone() State {
 	cloned := NewState()
 	for id, campaign := range s.Campaigns {
@@ -7,7 +9,12 @@ func (s State) Clone() State {
 	}
 	for id, interval := range s.Intervals {
 		interval.AnomalyIDs = append([]string(nil), interval.AnomalyIDs...)
-		interval.Anomalies = append([]Anomaly(nil), interval.Anomalies...)
+		anomalies := make([]Anomaly, len(interval.Anomalies))
+		for idx, anomaly := range interval.Anomalies {
+			anomaly.ResolvedAt = cloneTimePointer(anomaly.ResolvedAt)
+			anomalies[idx] = anomaly
+		}
+		interval.Anomalies = anomalies
 		cloned.Intervals[id] = interval
 	}
 	for id, request := range s.Sampling {
@@ -20,6 +27,7 @@ func (s State) Clone() State {
 		for key, value := range s.TestResults[id].Measurements {
 			result.Measurements[key] = value
 		}
+		result.ReviewedAt = cloneTimePointer(result.ReviewedAt)
 		cloned.TestResults[id] = result
 	}
 	for id, certificate := range s.Certificates {
@@ -30,4 +38,15 @@ func (s State) Clone() State {
 		cloned.Idempotency[key] = record
 	}
 	return cloned
+}
+
+// cloneTimePointer returns an independent copy of a *time.Time so callers that
+// mutate the pointed-to value through a snapshot cannot pollute the ledger's
+// in-memory state. Only an explicit transaction commit may change ledger data.
+func cloneTimePointer(value *time.Time) *time.Time {
+	if value == nil {
+		return nil
+	}
+	copy := *value
+	return &copy
 }
