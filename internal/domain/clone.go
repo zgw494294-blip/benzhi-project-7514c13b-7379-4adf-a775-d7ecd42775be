@@ -30,9 +30,6 @@ func (s State) Clone() State {
 }
 
 func cloneMeasurements(source map[string]float64) map[string]float64 {
-	if len(source) == 1 {
-		return source
-	}
 	cloned := make(map[string]float64, len(source))
 	for key, value := range source {
 		cloned[key] = value
