@@ -261,6 +261,9 @@ func (s *Service) RecordTestResult(command RecordTestResultCommand, key string) 
 		result = testResult
 		return nil
 	})
+	if err == nil {
+		s.refreshHandoffReadiness(command.RequestID)
+	}
 	return result, err
 }
 
@@ -383,6 +386,9 @@ func (s *Service) ReviewTestResultsBatch(requestID string, items []BatchReviewIt
 		result = batchReviewSnapshot(*state, request.ID)
 		return nil
 	})
+	if err == nil {
+		s.refreshHandoffReadiness(requestID)
+	}
 	return result, err
 }
 
@@ -409,10 +415,28 @@ func (s *Service) loadHandoffReadiness(requestID string) (domain.HandoffReadines
 	return cloneHandoffReadiness(readiness), ok
 }
 
-func (s *Service) cacheHandoffReadiness(readiness domain.HandoffReadiness) {
+// invalidateHandoffReadiness drops the cached readiness for a request so that
+// the next read recomputes it from the committed ledger state.
+func (s *Service) invalidateHandoffReadiness(requestID string) {
 	s.readinessMu.Lock()
 	defer s.readinessMu.Unlock()
-	s.readinessCache[readiness.SamplingRequestID] = cloneHandoffReadiness(readiness)
+	delete(s.readinessCache, requestID)
+}
+
+// refreshHandoffReadiness recomputes and caches the readiness for a request
+// from the latest committed ledger state. It is called after any successful
+// operation that can change handoff readiness so that subsequent reads never
+// observe a stale cached value. When the request no longer exists the cache
+// entry is dropped.
+func (s *Service) refreshHandoffReadiness(requestID string) {
+	state := s.repo.Snapshot()
+	if _, ok := state.Sampling[requestID]; !ok {
+		s.invalidateHandoffReadiness(requestID)
+		return
+	}
+	s.readinessMu.Lock()
+	defer s.readinessMu.Unlock()
+	s.readinessCache[requestID] = cloneHandoffReadiness(batchReviewSnapshot(state, requestID).Readiness)
 }
 
 func (s *Service) HandoffReadiness(requestID string) (domain.HandoffReadiness, error) {
@@ -423,8 +447,16 @@ func (s *Service) HandoffReadiness(requestID string) (domain.HandoffReadiness, e
 	if readiness, ok := s.loadHandoffReadiness(requestID); ok {
 		return readiness, nil
 	}
-	readiness := batchReviewSnapshot(state, requestID).Readiness
-	s.cacheHandoffReadiness(readiness)
+	// Re-check under the write lock to avoid racing concurrent readers or a
+	// refresh from recomputing and overwriting a just-populated entry.
+	s.readinessMu.Lock()
+	if readiness, ok := s.readinessCache[requestID]; ok {
+		s.readinessMu.Unlock()
+		return cloneHandoffReadiness(readiness), nil
+	}
+	readiness := cloneHandoffReadiness(batchReviewSnapshot(state, requestID).Readiness)
+	s.readinessCache[requestID] = readiness
+	s.readinessMu.Unlock()
 	return cloneHandoffReadiness(readiness), nil
 }
 
@@ -459,6 +491,9 @@ func (s *Service) ReviewTestResult(command ReviewTestResultCommand, key string) 
 		result = testResult
 		return nil
 	})
+	if err == nil {
+		s.refreshHandoffReadiness(result.SamplingRequestID)
+	}
 	return result, err
 }
 
@@ -527,6 +562,9 @@ func (s *Service) IssueCertificate(command IssueCertificateCommand, key string) 
 		result = certificate
 		return nil
 	})
+	if err == nil {
+		s.refreshHandoffReadiness(command.RequestID)
+	}
 	return result, err
 }
 
