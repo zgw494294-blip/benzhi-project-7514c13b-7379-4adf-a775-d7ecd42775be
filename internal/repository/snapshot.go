@@ -98,7 +98,13 @@ func validateState(state domain.State) error {
 		if _, ok := state.Campaigns[interval.CampaignID]; !ok {
 			return errors.New("账本中的孔段引用不存在任务")
 		}
-		for _, anomaly := range interval.Anomalies {
+		if len(interval.AnomalyIDs) != len(interval.Anomalies) {
+			return errors.New("账本中的孔段异常索引与异常实体数量不一致")
+		}
+		for idx, anomaly := range interval.Anomalies {
+			if interval.AnomalyIDs[idx] != anomaly.ID {
+				return errors.New("账本中的孔段异常索引与异常标识不对应")
+			}
 			if err := anomaly.ValidateEvidence(); err != nil {
 				return err
 			}
