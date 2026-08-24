@@ -107,7 +107,7 @@ func (a *API) HandleAddIntervalsBatch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	command.CampaignID = campaignID
-	result, err := a.service.AddIntervalsBatch(command, key)
+	result, err := a.service.AddIntervalsBatchContext(r.Context(), command, key)
 	if err != nil {
 		handleServiceError(w, err)
 		return

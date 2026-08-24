@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"strconv"
 	"strings"
 
@@ -31,12 +32,16 @@ type BatchIntervalsResult struct {
 }
 
 func (s *Service) AddIntervalsBatch(command BatchIntervalsCommand, key string) (BatchIntervalsResult, error) {
+	return s.AddIntervalsBatchContext(context.Background(), command, key)
+}
+
+func (s *Service) AddIntervalsBatchContext(ctx context.Context, command BatchIntervalsCommand, key string) (BatchIntervalsResult, error) {
 	hash, err := requestHash(command)
 	if err != nil {
 		return BatchIntervalsResult{}, err
 	}
 	var result BatchIntervalsResult
-	err = s.repo.Transact(func(state *domain.State) error {
+	err = s.repo.TransactContext(ctx, func(state *domain.State) error {
 		if resource, found, err := beginIdempotent(state, key, "add_intervals_batch", hash); err != nil {
 			return err
 		} else if found {

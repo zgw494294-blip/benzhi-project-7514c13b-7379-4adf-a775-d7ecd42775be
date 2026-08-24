@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"context"
 	"reflect"
 	"sync"
 
@@ -39,6 +40,23 @@ func (r *Repository) Commit(next domain.State) error {
 }
 
 func (r *Repository) Transact(change func(*domain.State) error) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	current := r.store.State()
+	next := current.Clone()
+	if err := change(&next); err != nil {
+		return err
+	}
+	if reflect.DeepEqual(current, next) {
+		return nil
+	}
+	return r.store.Commit(next)
+}
+
+func (r *Repository) TransactContext(ctx context.Context, change func(*domain.State) error) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	current := r.store.State()
