@@ -4,6 +4,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"corelog/internal/domain"
 	"corelog/internal/selfcheck"
@@ -142,12 +143,20 @@ func (s *Service) ReviewSamplingRequest(command ReviewSamplingCommand, key strin
 		if err := request.Review(command.Decision == "approve", command.Reviewer, command.ReviewNote, now); err != nil {
 			return err
 		}
+		if command.Decision == "approve" {
+			campaign, exists := state.Campaigns[request.CampaignID]
+			if exists {
+				campaign.UpdatedAt = now.UTC()
+				state.Campaigns[campaign.ID] = campaign
+			}
+		}
 		if command.Decision == "return" {
 			for _, intervalID := range request.IntervalIDs {
 				interval := state.Intervals[intervalID]
 				interval.Unfreeze(request.ID)
 				state.Intervals[intervalID] = interval
 			}
+			touchCampaignAfterSamplingReview(state, request.CampaignID, now)
 		}
 		state.Sampling[request.ID] = request
 		saveIdempotent(state, key, "review_sampling", hash, request.ID, now)
@@ -155,6 +164,17 @@ func (s *Service) ReviewSamplingRequest(command ReviewSamplingCommand, key strin
 		return nil
 	})
 	return result, err
+}
+
+// touchCampaignAfterSamplingReview keeps the campaign aggregate version aligned
+// with the interval ownership change made when a request is returned.
+func touchCampaignAfterSamplingReview(state *domain.State, campaignID string, now time.Time) {
+	campaign, ok := state.Campaigns[campaignID]
+	if !ok {
+		return
+	}
+	campaign.Touch(now)
+	state.Campaigns[campaign.ID] = campaign
 }
 
 type ResubmitSamplingCommand struct {
