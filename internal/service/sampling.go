@@ -397,12 +397,35 @@ func batchReviewSnapshot(state domain.State, requestID string) BatchReviewResult
 	return BatchReviewResult{SamplingRequestID: requestID, Results: results, Readiness: domain.CalculateHandoffReadiness(requestID, results)}
 }
 
+func cloneHandoffReadiness(readiness domain.HandoffReadiness) domain.HandoffReadiness {
+	readiness.BlockingResults = append([]string(nil), readiness.BlockingResults...)
+	return readiness
+}
+
+func (s *Service) loadHandoffReadiness(requestID string) (domain.HandoffReadiness, bool) {
+	s.readinessMu.RLock()
+	defer s.readinessMu.RUnlock()
+	readiness, ok := s.readinessCache[requestID]
+	return cloneHandoffReadiness(readiness), ok
+}
+
+func (s *Service) cacheHandoffReadiness(readiness domain.HandoffReadiness) {
+	s.readinessMu.Lock()
+	defer s.readinessMu.Unlock()
+	s.readinessCache[readiness.SamplingRequestID] = cloneHandoffReadiness(readiness)
+}
+
 func (s *Service) HandoffReadiness(requestID string) (domain.HandoffReadiness, error) {
 	state := s.repo.Snapshot()
 	if _, ok := state.Sampling[requestID]; !ok {
 		return domain.HandoffReadiness{}, domain.NotFound("取样申请")
 	}
-	return batchReviewSnapshot(state, requestID).Readiness, nil
+	if readiness, ok := s.loadHandoffReadiness(requestID); ok {
+		return readiness, nil
+	}
+	readiness := batchReviewSnapshot(state, requestID).Readiness
+	s.cacheHandoffReadiness(readiness)
+	return cloneHandoffReadiness(readiness), nil
 }
 
 func (s *Service) ReviewTestResult(command ReviewTestResultCommand, key string) (domain.TestResult, error) {

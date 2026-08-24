@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"corelog/internal/domain"
@@ -16,17 +17,25 @@ import (
 )
 
 type Service struct {
-	repo  *repository.Repository
-	clock func() time.Time
-	idgen func(string) string
+	repo           *repository.Repository
+	clock          func() time.Time
+	idgen          func(string) string
+	readinessMu    sync.RWMutex
+	readinessCache map[string]domain.HandoffReadiness
 }
 
 func New(repo *repository.Repository) *Service {
-	return &Service{repo: repo, clock: time.Now, idgen: randomID}
+	return &Service{
+		repo: repo, clock: time.Now, idgen: randomID,
+		readinessCache: make(map[string]domain.HandoffReadiness),
+	}
 }
 
 func NewWithDependencies(repo *repository.Repository, clock func() time.Time, idgen func(string) string) *Service {
-	return &Service{repo: repo, clock: clock, idgen: idgen}
+	return &Service{
+		repo: repo, clock: clock, idgen: idgen,
+		readinessCache: make(map[string]domain.HandoffReadiness),
+	}
 }
 
 func randomID(prefix string) string {
