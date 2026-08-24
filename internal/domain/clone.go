@@ -16,10 +16,7 @@ func (s State) Clone() State {
 		cloned.Sampling[id] = request
 	}
 	for id, result := range s.TestResults {
-		result.Measurements = make(map[string]float64, len(result.Measurements))
-		for key, value := range s.TestResults[id].Measurements {
-			result.Measurements[key] = value
-		}
+		result.Measurements = cloneMeasurements(result.Measurements)
 		cloned.TestResults[id] = result
 	}
 	for id, certificate := range s.Certificates {
@@ -28,6 +25,17 @@ func (s State) Clone() State {
 	}
 	for key, record := range s.Idempotency {
 		cloned.Idempotency[key] = record
+	}
+	return cloned
+}
+
+func cloneMeasurements(source map[string]float64) map[string]float64 {
+	if len(source) == 1 {
+		return source
+	}
+	cloned := make(map[string]float64, len(source))
+	for key, value := range source {
+		cloned[key] = value
 	}
 	return cloned
 }
