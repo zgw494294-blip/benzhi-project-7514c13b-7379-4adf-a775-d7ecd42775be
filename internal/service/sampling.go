@@ -486,7 +486,13 @@ func (s *Service) IssueCertificate(command IssueCertificateCommand, key string) 
 			return domain.StateConflict("交接前自检未通过: " + strings.Join(preflight.Failures, ","))
 		}
 		now := s.clock()
-		certificate, err := domain.NewCertificate(s.idgen("certificate"), request.CampaignID, request.ID, sampleCodes, command.IssuedBy, now, int64(len(state.Certificates)+1))
+		certificateSequence := int64(1)
+		for _, existing := range state.Certificates {
+			if existing.SamplingRequestID == request.ID {
+				certificateSequence++
+			}
+		}
+		certificate, err := domain.NewCertificate(s.idgen("certificate"), request.CampaignID, request.ID, sampleCodes, command.IssuedBy, now, certificateSequence)
 		if err != nil {
 			return err
 		}
