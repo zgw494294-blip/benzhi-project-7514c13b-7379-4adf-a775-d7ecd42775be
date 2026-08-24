@@ -7,6 +7,19 @@ import (
 	"corelog/internal/domain"
 )
 
+type anomalySummaryCacheEntry struct {
+	sequence int64
+	summary  domain.AnomalySummary
+}
+
+func cloneAnomalySummary(source domain.AnomalySummary) domain.AnomalySummary {
+	cloned := source
+	cloned.Items = append([]domain.AnomalyEvidence(nil), source.Items...)
+	cloned.BlockingBoreholes = append([]string(nil), source.BlockingBoreholes...)
+	cloned.BlockingIntervals = append([]string(nil), source.BlockingIntervals...)
+	return cloned
+}
+
 func (s *Service) ListAnomalies(campaignID, status, kind string) (domain.AnomalySummary, error) {
 	state := s.repo.Snapshot()
 	if _, ok := state.Campaigns[campaignID]; !ok {
@@ -20,6 +33,11 @@ func (s *Service) ListAnomalies(campaignID, status, kind string) (domain.Anomaly
 		return domain.AnomalySummary{}, domain.Invalid("status", "必须为 open、resolved 或 all")
 	}
 	kind = strings.TrimSpace(kind)
+	cacheKey := campaignID + "\x00" + status + "\x00" + kind
+	sequence := s.repo.Sequence()
+	if cached, ok := s.anomalyCache[cacheKey]; ok && cached.sequence == sequence {
+		return cloneAnomalySummary(cached.summary), nil
+	}
 	result := domain.AnomalySummary{Items: []domain.AnomalyEvidence{}, BlockingBoreholes: []string{}, BlockingIntervals: []string{}}
 	blocking := make(map[string]bool)
 	blockingIntervals := make(map[string]bool)
@@ -72,5 +90,6 @@ func (s *Service) ListAnomalies(campaignID, status, kind string) (domain.Anomaly
 		result.BlockingIntervals = append(result.BlockingIntervals, intervalID)
 	}
 	sort.Strings(result.BlockingIntervals)
+	s.anomalyCache[cacheKey] = anomalySummaryCacheEntry{sequence: sequence, summary: cloneAnomalySummary(result)}
 	return result, nil
 }

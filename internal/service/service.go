@@ -16,17 +16,18 @@ import (
 )
 
 type Service struct {
-	repo  *repository.Repository
-	clock func() time.Time
-	idgen func(string) string
+	repo         *repository.Repository
+	clock        func() time.Time
+	idgen        func(string) string
+	anomalyCache map[string]anomalySummaryCacheEntry
 }
 
 func New(repo *repository.Repository) *Service {
-	return &Service{repo: repo, clock: time.Now, idgen: randomID}
+	return &Service{repo: repo, clock: time.Now, idgen: randomID, anomalyCache: make(map[string]anomalySummaryCacheEntry)}
 }
 
 func NewWithDependencies(repo *repository.Repository, clock func() time.Time, idgen func(string) string) *Service {
-	return &Service{repo: repo, clock: clock, idgen: idgen}
+	return &Service{repo: repo, clock: clock, idgen: idgen, anomalyCache: make(map[string]anomalySummaryCacheEntry)}
 }
 
 func randomID(prefix string) string {
