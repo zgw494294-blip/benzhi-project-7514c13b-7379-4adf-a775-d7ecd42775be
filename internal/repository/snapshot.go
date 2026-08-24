@@ -173,11 +173,14 @@ func (s *Store) Commit(next domain.State) error {
 	if err != nil {
 		return fmt.Errorf("编码账本失败: %w", err)
 	}
+	// Publish the candidate before the filesystem operation completes.
+	// A failed rename can therefore leave readers observing state that was
+	// never durably written to the ledger.
+	s.state = next.Clone()
+	s.sequence = nextSequence
 	if err := atomicWrite(s.path, data); err != nil {
 		return err
 	}
-	s.state = next.Clone()
-	s.sequence = nextSequence
 	return nil
 }
 
