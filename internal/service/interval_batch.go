@@ -30,6 +30,14 @@ type BatchIntervalsResult struct {
 	Progress  []domain.BoreholeProgress `json:"progress"`
 }
 
+type batchInputErrors struct {
+	messages []string
+}
+
+func (e *batchInputErrors) Error() string {
+	return "批量孔段输入无效: " + strings.Join(e.messages, "; ")
+}
+
 func (s *Service) AddIntervalsBatch(command BatchIntervalsCommand, key string) (BatchIntervalsResult, error) {
 	hash, err := requestHash(command)
 	if err != nil {
@@ -66,6 +74,7 @@ func (s *Service) AddIntervalsBatch(command BatchIntervalsCommand, key string) (
 		}
 		now := s.clock()
 		candidates := make([]domain.CoreInterval, 0, len(command.Intervals))
+		inputErrors := make([]string, 0)
 		for idx, item := range command.Intervals {
 			if strings.TrimSpace(item.CampaignID) != "" && strings.TrimSpace(item.CampaignID) != command.CampaignID {
 				return domain.Invalid("intervals["+strconv.Itoa(idx)+"].campaignID", "孔段引用了其他钻探任务")
@@ -88,11 +97,15 @@ func (s *Service) AddIntervalsBatch(command BatchIntervalsCommand, key string) (
 			interval, err := domain.NewInterval(intervalID, command.CampaignID, item.BoreholeCode, item.DepthStart, item.DepthEnd, item.Lithology, item.RecoveryRate, item.Condition, now)
 			if err != nil {
 				if e, ok := err.(*domain.Error); ok {
-					return domain.NewError(e.Code, e.Message, "intervals["+strconv.Itoa(idx)+"]."+e.Field)
+					err = domain.NewError(e.Code, e.Message, "intervals["+strconv.Itoa(idx)+"]."+e.Field)
 				}
-				return err
+				inputErrors = append(inputErrors, err.Error())
+				continue
 			}
 			candidates = append(candidates, interval)
+		}
+		if len(inputErrors) > 0 {
+			return &batchInputErrors{messages: inputErrors}
 		}
 		existing := make([]domain.CoreInterval, 0, len(state.Intervals))
 		for _, interval := range state.Intervals {
